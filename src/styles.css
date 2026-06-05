@@ -1,0 +1,438 @@
+/* ── Reset & Base ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --color-bg:        #f8f9ff;
+  --color-surface:   #ffffff;
+  --color-primary:   #6c63ff;
+  --color-primary-h: #5a52e0;
+  --color-danger:    #e53e3e;
+  --color-danger-h:  #c53030;
+  --color-success:   #38a169;
+  --color-success-h: #2f855a;
+  --color-text:      #1e1b2e;
+  --color-muted:     #6b7280;
+  --color-border:    #e5e7f0;
+  --color-overlay:   rgba(30, 27, 46, 0.55);
+
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+/* ── Utility ── */
+.hidden {
+  display: none !important;
+}
+
+/* ── Overlay (backdrop) ── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(3px);
+}
+
+/* ── Modal ── */
+.modal {
+  background: var(--color-surface);
+  border-radius: 16px;
+  padding: 32px 28px 28px;
+  width: 380px;
+  max-width: calc(100vw - 40px);
+  box-shadow: 0 20px 60px rgba(108, 99, 255, 0.18), 0 4px 16px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.modal-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.modal-icon {
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.modal-subtitle {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+/* ── Startup Modal ── */
+.startup-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.schedule-link {
+  display: block;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--color-primary);
+  text-decoration: none;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+.schedule-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* ── Password Modal ── */
+.password-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-bg);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus {
+  border-color: var(--color-primary);
+}
+.input.input-error {
+  border-color: var(--color-danger);
+}
+
+.error-text {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-danger);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  user-select: none;
+  white-space: nowrap;
+}
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-icon {
+  font-size: 0.85rem;
+}
+
+/* Primary */
+.btn-primary {
+  background: var(--color-primary);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(108, 99, 255, 0.35);
+}
+.btn-primary:hover {
+  background: var(--color-primary-h);
+  box-shadow: 0 4px 14px rgba(108, 99, 255, 0.45);
+}
+
+/* Secondary */
+.btn-secondary {
+  background: #f0efff;
+  color: var(--color-primary);
+  box-shadow: none;
+}
+.btn-secondary:hover {
+  background: #e4e2ff;
+}
+
+/* Danger */
+.btn-danger {
+  background: var(--color-danger);
+  color: #fff;
+}
+.btn-danger:hover {
+  background: var(--color-danger-h);
+}
+
+/* Ghost */
+.btn-ghost {
+  background: transparent;
+  color: var(--color-muted);
+  border: 1.5px solid var(--color-border);
+}
+.btn-ghost:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Sizes */
+.btn-lg {
+  padding: 13px 20px;
+  font-size: 0.95rem;
+  border-radius: 10px;
+  width: 100%;
+}
+
+.btn-xl {
+  padding: 16px 24px;
+  font-size: 1.05rem;
+  border-radius: 12px;
+  width: 100%;
+  box-shadow: 0 4px 16px rgba(108, 99, 255, 0.3);
+}
+
+/* Study mode toggle states */
+.btn-start {
+  background: var(--color-primary);
+  color: #fff;
+}
+.btn-start:hover {
+  background: var(--color-primary-h);
+}
+
+.btn-stop {
+  background: var(--color-danger);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(229, 62, 62, 0.35);
+}
+.btn-stop:hover {
+  background: var(--color-danger-h);
+}
+
+/* Action buttons */
+.btn-action {
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1.5px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+.btn-action:hover {
+  background: #f0efff;
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.action-icon {
+  font-size: 1.2rem;
+}
+
+/* ── Main Screen ── */
+.main-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 0 0 20px;
+  gap: 0;
+}
+
+/* Header */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px 16px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-icon {
+  font-size: 1.4rem;
+}
+
+.brand-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+/* Status badge */
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.status-off {
+  background: #f3f4f6;
+  color: var(--color-muted);
+}
+.status-on {
+  background: #dcfce7;
+  color: #15803d;
+}
+.status-pending {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+/* Toggle card */
+.toggle-card {
+  margin: 20px 20px 0;
+  background: var(--color-surface);
+  border-radius: 14px;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  border: 1px solid var(--color-border);
+}
+
+.mode-status-text {
+  font-size: 0.95rem;
+  color: var(--color-muted);
+  text-align: center;
+}
+.mode-status-text strong {
+  color: var(--color-text);
+}
+
+/* Countdown banner */
+.countdown-banner {
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  width: 100%;
+}
+
+/* Websites card */
+.card {
+  margin: 14px 20px 0;
+  background: var(--color-surface);
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  border: 1px solid var(--color-border);
+}
+
+.card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.card-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.card-subtitle {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.website-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.website-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.site-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-border);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+
+/* Dots turn red when study mode is active */
+.study-active .site-dot {
+  background: var(--color-danger);
+}
+
+.site-name {
+  color: var(--color-muted);
+}
+
+/* Secondary actions */
+.secondary-actions {
+  margin: 14px 20px 0;
+  display: flex;
+  gap: 10px;
+}

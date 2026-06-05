@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Study Mode</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+
+    <!-- ── Startup Modal Overlay ── -->
+    <div id="startup-overlay" class="overlay">
+      <div class="modal startup-modal">
+        <div class="modal-header">
+          <div class="modal-icon">📚</div>
+          <h2 class="modal-title">Ready to Focus?</h2>
+          <p class="modal-subtitle">
+            Study Mode will block distracting websites so you can stay on track.
+          </p>
+        </div>
+
+        <div class="startup-options">
+          <button id="btn-start-now" class="btn btn-primary btn-lg">
+            <span class="btn-icon">▶</span>
+            Start Now
+          </button>
+          <button id="btn-start-5" class="btn btn-secondary btn-lg">
+            <span class="btn-icon">⏱</span>
+            Start in 5 min
+          </button>
+          <button id="btn-start-10" class="btn btn-secondary btn-lg">
+            <span class="btn-icon">⏱</span>
+            Start in 10 min
+          </button>
+        </div>
+
+        <a id="link-schedule" class="schedule-link" href="#">
+          Adjust automated schedule / preferences…
+        </a>
+      </div>
+    </div>
+
+    <!-- ── Password Modal Overlay ── -->
+    <div id="password-overlay" class="overlay hidden">
+      <div class="modal password-modal">
+        <div class="modal-header">
+          <div class="modal-icon">🔒</div>
+          <h2 class="modal-title">Stop Study Mode?</h2>
+          <p class="modal-subtitle">Enter your password to turn off Study Mode.</p>
+        </div>
+
+        <div class="password-field">
+          <input
+            id="password-input"
+            type="password"
+            class="input"
+            placeholder="Enter password"
+            autocomplete="off"
+          />
+          <p id="password-error" class="error-text hidden">Incorrect password. Try again.</p>
+        </div>
+
+        <div class="modal-actions">
+          <button id="btn-password-cancel" class="btn btn-ghost">Cancel</button>
+          <button id="btn-password-confirm" class="btn btn-danger">Stop Study Mode</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Main App Screen ── -->
+    <div id="main-screen" class="main-screen hidden">
+
+      <!-- Header -->
+      <header class="app-header">
+        <div class="app-brand">
+          <span class="brand-icon">📚</span>
+          <span class="brand-name">Study Mode</span>
+        </div>
+        <div id="status-badge" class="status-badge status-off">Off</div>
+      </header>
+
+      <!-- Study Mode Toggle Card -->
+      <section class="toggle-card">
+        <div id="mode-status-text" class="mode-status-text">
+          Study Mode is <strong>off</strong>
+        </div>
+        <div id="countdown-banner" class="countdown-banner hidden">
+          Starting in <span id="countdown-value">--</span>
+        </div>
+        <button id="btn-toggle-study" class="btn btn-start btn-xl">
+          Start Study Mode
+        </button>
+      </section>
+
+      <!-- Blocked Websites Card -->
+      <section class="card websites-card">
+        <div class="card-header">
+          <span class="card-title">Blocked Websites</span>
+          <span class="card-subtitle">Active when Study Mode is on</span>
+        </div>
+        <ul class="website-list">
+          <li class="website-item">
+            <span class="site-dot"></span>
+            <span class="site-name">youtube.com</span>
+          </li>
+          <li class="website-item">
+            <span class="site-dot"></span>
+            <span class="site-name">instagram.com</span>
+          </li>
+          <li class="website-item">
+            <span class="site-dot"></span>
+            <span class="site-name">tiktok.com</span>
+          </li>
+          <li class="website-item">
+            <span class="site-dot"></span>
+            <span class="site-name">twitter.com / x.com</span>
+          </li>
+          <li class="website-item">
+            <span class="site-dot"></span>
+            <span class="site-name">reddit.com</span>
+          </li>
+        </ul>
+      </section>
+
+      <!-- Secondary Action Buttons -->
+      <section class="secondary-actions">
+        <button id="btn-clock" class="btn btn-action">
+          <span class="action-icon">🕐</span>
+          Open Clock
+        </button>
+        <button id="btn-scheduled" class="btn btn-action">
+          <span class="action-icon">📅</span>
+          Scheduled
+        </button>
+        <button id="btn-blocked" class="btn btn-action">
+          <span class="action-icon">🚫</span>
+          Blocked
+        </button>
+      </section>
+
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
