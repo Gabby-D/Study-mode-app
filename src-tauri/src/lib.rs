@@ -276,6 +276,11 @@ fn set_study_mode_active(state: tauri::State<'_, AppState>, active: bool) {
 }
 
 #[tauri::command]
+fn show_app_window(app: tauri::AppHandle) {
+    show_main_window(&app);
+}
+
+#[tauri::command]
 fn block_sites(state: tauri::State<'_, AppState>, sites: Vec<String>) -> Result<(), String> {
     // 1. Update the shared blocked sites list so the PAC server serves the updated list
     {
@@ -367,6 +372,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             set_study_mode_active,
+            show_app_window,
             block_sites,
             unblock_sites
         ])

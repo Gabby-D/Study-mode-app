@@ -15,10 +15,20 @@ Study Mode is a Windows desktop app that helps students limit time on distractin
 - Use the **Blocked** button to **add** sites (no password) or **delete** sites (password required: `12345`).
 - To **stop** Study Mode you must enter the password (`12345`).
 - **The app cannot be closed while Study Mode is on** — it must be turned off first.
+- **Weekly Schedule:** Set up a weekly schedule (Mon–Sun) using a horizontal calendar grid.
+  - The schedule function starts **On** by default. Turning it off requires entering the password (`12345`).
+  - You can add custom time blocks (start/end times) to automatically trigger Study Mode.
+  - Deleting a time block requires entering the password (`12345`).
+  - **Vacation Pause:** Pause the schedule for a set number of days (password required). You can cancel the pause early at any time using the **Resume Now** button (no password required).
+  - **Startup Overlay Guard:** If a scheduled block is active and the startup overlay is shown:
+    - **Start Now** starts Study Mode immediately (no password).
+    - **Start in 5 min / 10 min** starts the delay countdown immediately (no password).
+    - **Adjust automated schedule...** opens the schedule immediately (no password).
+    - **Dismissing / Closing** the overlay (by clicking the background backdrop or closing the app window) requires entering the password (`12345`).
 - Closing the window normally hides the app to the **system tray** (bottom-right, near the clock). Right-click the tray icon for Show / Hide / Quit.
 - The app registers to **start automatically when Windows starts**.
 
-> **Note:** Scheduling and the Open Clock button are not implemented yet.
+> **Note:** The Open Clock button is not implemented yet. All other features, including the weekly schedule, are fully implemented.
 
 ---
 
@@ -127,7 +137,17 @@ Appears every time the app opens. Choose when to start Study Mode, or close the 
 | **Start / Stop Study Mode** button | Toggles study mode (stopping requires the password) |
 | Blocked Websites list | Shows which sites are blocked (dots turn red when active) |
 | **Blocked** button | Opens the manage-sites modal (add or delete sites) |
-| Open Clock / Scheduled | Not implemented yet |
+| **Scheduled** button | Opens the weekly schedule horizontal calendar modal |
+
+### Weekly schedule modal
+| Element / Action | Password required? |
+|------------------|-------------------|
+| Toggle Schedule Off | Yes (`12345`) |
+| Toggle Schedule On | No |
+| Add time block | No |
+| Delete time block | Yes (`12345`) |
+| Vacation Pause (set days) | Yes (`12345`) |
+| Cancel Pause (Resume Now) | No |
 
 ### Manage blocked sites modal
 | Action | Password required? |

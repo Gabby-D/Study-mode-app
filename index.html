@@ -67,6 +67,90 @@
       </div>
     </div>
 
+    <!-- ── Pause Schedule Modal ── -->
+    <div id="pause-schedule-overlay" class="overlay hidden">
+      <div class="modal password-modal">
+        <div class="modal-header">
+          <div class="modal-icon">🏖</div>
+          <h2 class="modal-title">Pause Schedule</h2>
+          <p class="modal-subtitle">Enter your password and how many days to pause. The schedule resumes automatically after.</p>
+        </div>
+
+        <div class="password-field">
+          <input
+            id="pause-password-input"
+            type="password"
+            class="input"
+            placeholder="Enter password"
+            autocomplete="off"
+          />
+          <label class="field-label" for="pause-days-input">Number of days</label>
+          <input
+            id="pause-days-input"
+            type="number"
+            class="input"
+            min="1"
+            max="365"
+            value="7"
+          />
+          <p id="pause-schedule-error" class="error-text hidden">Incorrect password. Try again.</p>
+        </div>
+
+        <div class="modal-actions">
+          <button id="btn-pause-cancel" class="btn btn-ghost">Cancel</button>
+          <button id="btn-pause-confirm" class="btn btn-danger">Pause Schedule</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Weekly Schedule Modal ── -->
+    <div id="schedule-modal-overlay" class="overlay hidden">
+      <div class="modal schedule-modal">
+        <div class="schedule-modal-header">
+          <h2 class="modal-title">Weekly Schedule</h2>
+          <button id="btn-schedule-modal-close" class="btn-close">✕</button>
+        </div>
+        <p class="modal-subtitle schedule-subtitle">Same schedule every week. Study Mode turns on automatically during time blocks.</p>
+
+        <div class="schedule-toggle-row">
+          <div class="schedule-toggle-info">
+            <span class="schedule-toggle-label">Automatic schedule</span>
+            <span id="schedule-toggle-status" class="schedule-toggle-status">On</span>
+          </div>
+          <div class="schedule-toggle-actions">
+            <button id="btn-pause-schedule" class="btn btn-secondary btn-schedule-toggle">Pause for vacation</button>
+            <button id="btn-cancel-pause" class="btn btn-secondary btn-schedule-toggle hidden">Resume now</button>
+          </div>
+        </div>
+
+        <div class="schedule-calendar">
+          <div id="schedule-calendar-grid" class="schedule-calendar-grid">
+            <!-- rendered by JS -->
+          </div>
+        </div>
+
+        <div class="add-block-form">
+          <p class="add-block-label">Add time block</p>
+          <div class="add-block-row">
+            <select id="add-block-day" class="input select-input">
+              <option value="0">Mon</option>
+              <option value="1">Tue</option>
+              <option value="2">Wed</option>
+              <option value="3">Thu</option>
+              <option value="4">Fri</option>
+              <option value="5">Sat</option>
+              <option value="6">Sun</option>
+            </select>
+            <input id="add-block-start" type="time" class="input time-input" value="09:00" />
+            <span class="time-separator">–</span>
+            <input id="add-block-end" type="time" class="input time-input" value="17:00" />
+          </div>
+          <button id="btn-add-block" class="btn btn-primary btn-add-block">Add Block</button>
+          <p id="add-block-error" class="error-text hidden"></p>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Manage Blocked Sites Modal ── -->
     <div id="blocked-modal-overlay" class="overlay hidden">
       <div class="modal blocked-modal">
