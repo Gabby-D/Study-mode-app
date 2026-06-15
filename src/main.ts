@@ -6,6 +6,7 @@ const STUDY_PASSWORD = "12345";
 // ── DOM References ─────────────────────────────────────────────────────────
 const startupOverlay   = document.getElementById("startup-overlay")!;
 const passwordOverlay  = document.getElementById("password-overlay")!;
+const blockedModalOverlay = document.getElementById("blocked-modal-overlay")!;
 const mainScreen       = document.getElementById("main-screen")!;
 
 const btnStartNow      = document.getElementById("btn-start-now")!;
@@ -19,16 +20,93 @@ const countdownBanner  = document.getElementById("countdown-banner")!;
 const countdownValue   = document.getElementById("countdown-value")!;
 const btnToggleStudy   = document.getElementById("btn-toggle-study")!;
 const websitesCard     = document.querySelector(".websites-card")!;
+const mainSitesList    = document.getElementById("main-sites-list")!;
 
+const passwordModalTitle    = document.getElementById("password-modal-title")!;
+const passwordModalSubtitle = document.getElementById("password-modal-subtitle")!;
 const passwordInput    = document.getElementById("password-input") as HTMLInputElement;
 const passwordError    = document.getElementById("password-error")!;
 const btnPasswordCancel  = document.getElementById("btn-password-cancel")!;
 const btnPasswordConfirm = document.getElementById("btn-password-confirm")!;
 
+const manageSitesList  = document.getElementById("manage-sites-list")!;
+const addSiteInput     = document.getElementById("add-site-input") as HTMLInputElement;
+const btnAddSite       = document.getElementById("btn-add-site")!;
+const btnBlockedModalClose = document.getElementById("btn-blocked-modal-close")!;
+
+const errorBanner      = document.getElementById("error-banner")!;
+const errorBannerText  = document.getElementById("error-banner-text")!;
+const btnErrorDismiss  = document.getElementById("btn-error-dismiss")!;
+
 // ── State ──────────────────────────────────────────────────────────────────
 let studyModeActive = false;
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
 let countdownSeconds = 0;
+
+// Password modal mode: what happens on correct password
+type PasswordMode = "stop-study" | "delete-site";
+let passwordMode: PasswordMode = "stop-study";
+let pendingDeleteSite: string | null = null;
+
+// Blocked sites list (source of truth)
+let blockedSites: string[] = [
+  "youtube.com / youtu.be",
+  "instagram.com",
+  "tiktok.com",
+  "twitter.com / x.com",
+  "reddit.com / redd.it",
+];
+
+// ── Error Banner ───────────────────────────────────────────────────────────
+function showError(msg: string) {
+  errorBannerText.textContent = msg;
+  errorBanner.classList.remove("hidden");
+}
+
+btnErrorDismiss.addEventListener("click", () => errorBanner.classList.add("hidden"));
+
+// ── Site List Rendering ────────────────────────────────────────────────────
+function renderMainSitesList() {
+  mainSitesList.innerHTML = blockedSites
+    .map(
+      (site) => `
+      <li class="website-item">
+        <span class="site-dot"></span>
+        <span class="site-name">${escapeHtml(site)}</span>
+      </li>`
+    )
+    .join("");
+}
+
+function renderManageSitesList() {
+  manageSitesList.innerHTML = blockedSites
+    .map(
+      (site) => `
+      <li class="manage-site-item">
+        <span>${escapeHtml(site)}</span>
+        <button class="btn-delete-site" data-site="${escapeAttr(site)}" title="Delete site">🗑</button>
+      </li>`
+    )
+    .join("");
+
+  // Attach delete listeners
+  manageSitesList.querySelectorAll<HTMLButtonElement>(".btn-delete-site").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const site = btn.getAttribute("data-site")!;
+      openPasswordModal("delete-site", site);
+    });
+  });
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function escapeAttr(str: string): string {
+  return str.replace(/"/g, "&quot;");
+}
+
+// Initial render
+renderMainSitesList();
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function formatCountdown(seconds: number): string {
@@ -45,49 +123,53 @@ async function notifyRust(active: boolean) {
   }
 }
 
+async function applyHostsBlocking() {
+  try {
+    await invoke("block_sites", { sites: blockedSites });
+    errorBanner.classList.add("hidden");
+  } catch (e) {
+    showError(`Site blocking requires admin rights. Right-click the app and choose "Run as administrator". (${e})`);
+  }
+}
+
+async function removeHostsBlocking() {
+  try {
+    await invoke("unblock_sites");
+    errorBanner.classList.add("hidden");
+  } catch (e) {
+    showError(`Could not unblock sites: ${e}`);
+  }
+}
+
 // ── Study Mode Activation / Deactivation ──────────────────────────────────
 function activateStudyMode() {
   studyModeActive = true;
   clearPendingCountdown();
 
-  // Update status badge
   statusBadge.textContent = "On";
   statusBadge.className = "status-badge status-on";
-
-  // Update status text
   modeStatusText.innerHTML = "Study Mode is <strong>on</strong>";
-
-  // Toggle button → Stop
   btnToggleStudy.textContent = "Stop Study Mode";
   btnToggleStudy.className = "btn btn-stop btn-xl";
-
-  // Highlight blocked sites
   websitesCard.classList.add("study-active");
 
-  // Tell Rust to block window close
   notifyRust(true);
+  applyHostsBlocking();
 }
 
 function deactivateStudyMode() {
   studyModeActive = false;
   clearPendingCountdown();
 
-  // Update status badge
   statusBadge.textContent = "Off";
   statusBadge.className = "status-badge status-off";
-
-  // Update status text
   modeStatusText.innerHTML = "Study Mode is <strong>off</strong>";
-
-  // Toggle button → Start
   btnToggleStudy.textContent = "Start Study Mode";
   btnToggleStudy.className = "btn btn-start btn-xl";
-
-  // Un-highlight blocked sites
   websitesCard.classList.remove("study-active");
 
-  // Tell Rust window close is allowed again
   notifyRust(false);
+  removeHostsBlocking();
 }
 
 // ── Countdown Logic ────────────────────────────────────────────────────────
@@ -99,7 +181,6 @@ function clearPendingCountdown() {
   countdownBanner.classList.add("hidden");
   countdownSeconds = 0;
 
-  // Restore badge if it was "pending"
   if (!studyModeActive) {
     statusBadge.textContent = "Off";
     statusBadge.className = "status-badge status-off";
@@ -112,14 +193,12 @@ function startCountdown(minutes: number) {
 
   statusBadge.textContent = "Pending";
   statusBadge.className = "status-badge status-pending";
-
   countdownValue.textContent = formatCountdown(countdownSeconds);
   countdownBanner.classList.remove("hidden");
 
   countdownTimer = setInterval(() => {
     countdownSeconds -= 1;
     countdownValue.textContent = formatCountdown(countdownSeconds);
-
     if (countdownSeconds <= 0) {
       clearInterval(countdownTimer!);
       countdownTimer = null;
@@ -144,42 +223,65 @@ btnStartNow.addEventListener("click", () => dismissStartupModal("now"));
 btnStart5.addEventListener("click",   () => dismissStartupModal(5));
 btnStart10.addEventListener("click",  () => dismissStartupModal(10));
 
-// Closing the startup modal (clicking backdrop) → immediate start
 startupOverlay.addEventListener("click", (e) => {
   if (e.target === startupOverlay) dismissStartupModal("immediate");
 });
 
-// Schedule link does nothing in Phase 1
 linkSchedule.addEventListener("click", (e) => e.preventDefault());
 
 // ── Main Screen Toggle Button ──────────────────────────────────────────────
 btnToggleStudy.addEventListener("click", () => {
   if (studyModeActive) {
-    // Show password modal
-    passwordInput.value = "";
-    passwordError.classList.add("hidden");
-    passwordInput.classList.remove("input-error");
-    passwordOverlay.classList.remove("hidden");
-    setTimeout(() => passwordInput.focus(), 50);
+    openPasswordModal("stop-study", null);
   } else {
     activateStudyMode();
   }
 });
 
 // ── Password Modal ─────────────────────────────────────────────────────────
+function openPasswordModal(mode: PasswordMode, site: string | null) {
+  passwordMode = mode;
+  pendingDeleteSite = site;
+
+  if (mode === "stop-study") {
+    passwordModalTitle.textContent = "Stop Study Mode?";
+    passwordModalSubtitle.textContent = "Enter your password to turn off Study Mode.";
+    btnPasswordConfirm.textContent = "Stop Study Mode";
+  } else {
+    passwordModalTitle.textContent = `Delete "${site}"?`;
+    passwordModalSubtitle.textContent = "Enter your password to remove this site.";
+    btnPasswordConfirm.textContent = "Delete Site";
+  }
+
+  passwordInput.value = "";
+  passwordError.classList.add("hidden");
+  passwordInput.classList.remove("input-error");
+  passwordOverlay.classList.remove("hidden");
+  setTimeout(() => passwordInput.focus(), 50);
+}
+
 function closePasswordModal() {
   passwordOverlay.classList.add("hidden");
   passwordInput.value = "";
   passwordError.classList.add("hidden");
   passwordInput.classList.remove("input-error");
+  pendingDeleteSite = null;
 }
 
 btnPasswordCancel.addEventListener("click", closePasswordModal);
 
 btnPasswordConfirm.addEventListener("click", () => {
   if (passwordInput.value === STUDY_PASSWORD) {
+    const mode = passwordMode;
+    const siteToDelete = pendingDeleteSite;
     closePasswordModal();
-    deactivateStudyMode();
+    if (mode === "stop-study") {
+      deactivateStudyMode();
+    } else if (mode === "delete-site" && siteToDelete !== null) {
+      blockedSites = blockedSites.filter((s) => s !== siteToDelete);
+      renderMainSitesList();
+      renderManageSitesList();
+    }
   } else {
     passwordError.classList.remove("hidden");
     passwordInput.classList.add("input-error");
@@ -193,12 +295,54 @@ passwordInput.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closePasswordModal();
 });
 
-// Allow clicking the backdrop to close the password modal
 passwordOverlay.addEventListener("click", (e) => {
   if (e.target === passwordOverlay) closePasswordModal();
 });
 
-// ── Secondary buttons (non-functional in Phase 1) ─────────────────────────
+// ── Blocked Sites Modal ────────────────────────────────────────────────────
+function openBlockedModal() {
+  renderManageSitesList();
+  addSiteInput.value = "";
+  blockedModalOverlay.classList.remove("hidden");
+  setTimeout(() => addSiteInput.focus(), 50);
+}
+
+function closeBlockedModal() {
+  blockedModalOverlay.classList.add("hidden");
+}
+
+document.getElementById("btn-blocked")!.addEventListener("click", openBlockedModal);
+btnBlockedModalClose.addEventListener("click", closeBlockedModal);
+
+blockedModalOverlay.addEventListener("click", (e) => {
+  if (e.target === blockedModalOverlay) closeBlockedModal();
+});
+
+function addSite() {
+  const raw = addSiteInput.value.trim().toLowerCase();
+  if (!raw) return;
+
+  // Strip protocol if pasted
+  const site = raw.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (!site) return;
+
+  if (blockedSites.includes(site)) {
+    addSiteInput.select();
+    return;
+  }
+
+  blockedSites.push(site);
+  renderMainSitesList();
+  renderManageSitesList();
+  addSiteInput.value = "";
+  addSiteInput.focus();
+}
+
+btnAddSite.addEventListener("click", addSite);
+addSiteInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") addSite();
+});
+
+// ── Non-functional buttons ─────────────────────────────────────────────────
 document.getElementById("btn-clock")?.addEventListener("click", () => {});
 document.getElementById("btn-scheduled")?.addEventListener("click", () => {});
-document.getElementById("btn-blocked")?.addEventListener("click", () => {});

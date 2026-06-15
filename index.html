@@ -45,8 +45,8 @@
       <div class="modal password-modal">
         <div class="modal-header">
           <div class="modal-icon">🔒</div>
-          <h2 class="modal-title">Stop Study Mode?</h2>
-          <p class="modal-subtitle">Enter your password to turn off Study Mode.</p>
+          <h2 id="password-modal-title" class="modal-title">Stop Study Mode?</h2>
+          <p id="password-modal-subtitle" class="modal-subtitle">Enter your password to turn off Study Mode.</p>
         </div>
 
         <div class="password-field">
@@ -67,6 +67,32 @@
       </div>
     </div>
 
+    <!-- ── Manage Blocked Sites Modal ── -->
+    <div id="blocked-modal-overlay" class="overlay hidden">
+      <div class="modal blocked-modal">
+        <div class="blocked-modal-header">
+          <h2 class="modal-title">Blocked Sites</h2>
+          <button id="btn-blocked-modal-close" class="btn-close">✕</button>
+        </div>
+        <p class="modal-subtitle" style="margin-top:-8px">Adding is free. Deleting requires your password.</p>
+
+        <ul id="manage-sites-list" class="manage-site-list">
+          <!-- rendered by JS -->
+        </ul>
+
+        <div class="add-site-row">
+          <input
+            id="add-site-input"
+            type="text"
+            class="input"
+            placeholder="e.g. facebook.com"
+            autocomplete="off"
+          />
+          <button id="btn-add-site" class="btn btn-primary">Add</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Main App Screen ── -->
     <div id="main-screen" class="main-screen hidden">
 
@@ -78,6 +104,12 @@
         </div>
         <div id="status-badge" class="status-badge status-off">Off</div>
       </header>
+
+      <!-- Error banner (shown when hosts file write fails) -->
+      <div id="error-banner" class="error-banner hidden">
+        <span id="error-banner-text"></span>
+        <button id="btn-error-dismiss" class="btn-close">✕</button>
+      </div>
 
       <!-- Study Mode Toggle Card -->
       <section class="toggle-card">
@@ -98,27 +130,8 @@
           <span class="card-title">Blocked Websites</span>
           <span class="card-subtitle">Active when Study Mode is on</span>
         </div>
-        <ul class="website-list">
-          <li class="website-item">
-            <span class="site-dot"></span>
-            <span class="site-name">youtube.com</span>
-          </li>
-          <li class="website-item">
-            <span class="site-dot"></span>
-            <span class="site-name">instagram.com</span>
-          </li>
-          <li class="website-item">
-            <span class="site-dot"></span>
-            <span class="site-name">tiktok.com</span>
-          </li>
-          <li class="website-item">
-            <span class="site-dot"></span>
-            <span class="site-name">twitter.com / x.com</span>
-          </li>
-          <li class="website-item">
-            <span class="site-dot"></span>
-            <span class="site-name">reddit.com</span>
-          </li>
+        <ul id="main-sites-list" class="website-list">
+          <!-- rendered by JS -->
         </ul>
       </section>
 
