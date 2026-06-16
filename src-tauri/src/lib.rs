@@ -16,6 +16,13 @@ const WINDOW_LABEL: &str = "main";
 const HOSTS_PATH: &str = r"C:\Windows\System32\drivers\etc\hosts";
 const MARKER_BEGIN: &str = "# --- Study Mode BEGIN ---";
 const MARKER_END: &str = "# --- Study Mode END ---";
+const DEFAULT_BLOCKED_SITES: &[&str] = &[
+    "youtube.com / youtu.be",
+    "instagram.com",
+    "tiktok.com",
+    "twitter.com / x.com",
+    "reddit.com / redd.it",
+];
 
 struct AppState {
     study_mode_active: Mutex<bool>,
@@ -269,26 +276,7 @@ fn start_block_proxy() {
 
 // ── Tauri Commands ─────────────────────────────────────────────────────────
 
-#[tauri::command]
-fn set_study_mode_active(state: tauri::State<'_, AppState>, active: bool) {
-    let mut guard = state.study_mode_active.lock().unwrap();
-    *guard = active;
-}
-
-#[tauri::command]
-fn show_app_window(app: tauri::AppHandle) {
-    show_main_window(&app);
-}
-
-#[tauri::command]
-fn block_sites(state: tauri::State<'_, AppState>, sites: Vec<String>) -> Result<(), String> {
-    // 1. Update the shared blocked sites list so the PAC server serves the updated list
-    {
-        let mut guard = state.blocked_sites.lock().unwrap();
-        *guard = sites;
-    }
-
-    // 2. Set the AutoConfigURL registry key
+fn enable_proxy_setting() -> Result<(), String> {
     let output = std::process::Command::new("reg")
         .args(&[
             "add",
@@ -309,7 +297,6 @@ fn block_sites(state: tauri::State<'_, AppState>, sites: Vec<String>) -> Result<
         return Err("Failed to update registry proxy settings".to_string());
     }
 
-    // 3. Notify Windows to refresh settings immediately
     unsafe {
         InternetSetOptionW(std::ptr::null_mut(), 39, std::ptr::null_mut(), 0);
         InternetSetOptionW(std::ptr::null_mut(), 37, std::ptr::null_mut(), 0);
@@ -318,9 +305,7 @@ fn block_sites(state: tauri::State<'_, AppState>, sites: Vec<String>) -> Result<
     Ok(())
 }
 
-#[tauri::command]
-fn unblock_sites() -> Result<(), String> {
-    // 1. Delete the AutoConfigURL registry key
+fn disable_proxy_setting() {
     let _ = std::process::Command::new("reg")
         .args(&[
             "delete",
@@ -332,13 +317,88 @@ fn unblock_sites() -> Result<(), String> {
         .creation_flags(0x08000000)
         .output();
 
-    // 2. Notify Windows to refresh settings immediately
     unsafe {
         InternetSetOptionW(std::ptr::null_mut(), 39, std::ptr::null_mut(), 0);
         InternetSetOptionW(std::ptr::null_mut(), 37, std::ptr::null_mut(), 0);
     }
+}
+
+#[tauri::command]
+fn open_clock_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("clock") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        "clock",
+        tauri::WebviewUrl::App("clock.html".into()),
+    )
+    .title("Focus Timer")
+    .inner_size(360.0, 430.0)
+    .min_inner_size(300.0, 340.0)
+    .resizable(true)
+    .always_on_top(true)
+    .decorations(true)
+    .build()
+    .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[tauri::command]
+fn set_study_mode_active(state: tauri::State<'_, AppState>, active: bool) {
+    let mut guard = state.study_mode_active.lock().unwrap();
+    *guard = active;
+}
+
+#[tauri::command]
+fn show_app_window(app: tauri::AppHandle) {
+    show_main_window(&app);
+}
+
+#[tauri::command]
+fn block_sites(state: tauri::State<'_, AppState>, sites: Vec<String>) -> Result<(), String> {
+    // 1. Update the shared blocked sites list so the PAC server serves the updated list
+    {
+        let mut guard = state.blocked_sites.lock().unwrap();
+        *guard = sites;
+    }
+
+    enable_proxy_setting()
+}
+
+#[tauri::command]
+fn unblock_sites() -> Result<(), String> {
+    disable_proxy_setting();
+    Ok(())
+}
+
+#[tauri::command]
+fn pause_study_mode_for_break(state: tauri::State<'_, AppState>) {
+    let mut active = state.study_mode_active.lock().unwrap();
+    *active = false;
+    disable_proxy_setting();
+}
+
+#[tauri::command]
+fn resume_study_mode_after_break(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    {
+        let mut active = state.study_mode_active.lock().unwrap();
+        *active = true;
+    }
+
+    {
+        let mut sites = state.blocked_sites.lock().unwrap();
+        if sites.is_empty() {
+            *sites = DEFAULT_BLOCKED_SITES.iter().map(|site| site.to_string()).collect();
+        }
+    }
+
+    enable_proxy_setting()
 }
 
 // ── Window Helpers ─────────────────────────────────────────────────────────
@@ -371,10 +431,13 @@ pub fn run() {
             blocked_sites,
         })
         .invoke_handler(tauri::generate_handler![
+            open_clock_window,
             set_study_mode_active,
             show_app_window,
             block_sites,
-            unblock_sites
+            unblock_sites,
+            pause_study_mode_for_break,
+            resume_study_mode_after_break
         ])
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .setup(|app| {
@@ -432,23 +495,34 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "clock" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    return;
+                }
+
                 let app = window.app_handle();
                 let state = app.state::<AppState>();
                 let is_active = *state.study_mode_active.lock().unwrap();
                 if is_active {
                     api.prevent_close();
                 } else {
-                    let _ = window.hide();
                     api.prevent_close();
+                    cleanup_proxy_on_startup();
+                    app.exit(0);
                 }
             }
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app_handle, event| {
+        .run(|app_handle, event| {
             if let RunEvent::ExitRequested { api, code, .. } = event {
                 if code.is_none() {
-                    api.prevent_exit();
+                    let state = app_handle.state::<AppState>();
+                    let is_active = *state.study_mode_active.lock().unwrap();
+                    if is_active {
+                        api.prevent_exit();
+                    }
                 } else {
                     cleanup_proxy_on_startup();
                 }

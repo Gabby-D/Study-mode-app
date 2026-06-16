@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Focus Timer</title>
+    <style>
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+
+      :root {
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        color: #1e1b2e;
+        background: #f8f9ff;
+      }
+
+      body {
+        margin: 0;
+        width: 100vw;
+        min-height: 100vh;
+        background: #f8f9ff;
+        display: flex;
+        align-items: stretch;
+        justify-content: stretch;
+      }
+
+      .timer-shell {
+        width: 100%;
+        min-height: 100vh;
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .timer-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+      }
+
+      .timer-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        background: #eef0f8;
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+      }
+
+      .timer-title {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 800;
+      }
+
+      .timer-subtitle {
+        margin: 2px 0 0;
+        color: #6b7280;
+        font-size: 0.85rem;
+      }
+
+      .timer-card {
+        flex: 1;
+        min-height: 0;
+        background: #ffffff;
+        border: 1px solid #e5e7f0;
+        border-radius: 18px;
+        box-shadow: 0 18px 50px rgba(108, 99, 255, 0.12);
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+      }
+
+      .phase-pill {
+        padding: 6px 14px;
+        border-radius: 999px;
+        background: #eef0f8;
+        color: #6c63ff;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .phase-pill.break {
+        background: #e6fffa;
+        color: #38a169;
+      }
+
+      .time-display {
+        width: min(58vw, 220px);
+        height: min(58vw, 220px);
+        min-width: 170px;
+        min-height: 170px;
+        border-radius: 999px;
+        border: 12px solid #eef0f8;
+        display: grid;
+        place-items: center;
+        font-size: clamp(2.45rem, 11vw, 3.4rem);
+        font-weight: 900;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.06em;
+      }
+
+      .status-text {
+        min-height: 42px;
+        margin: 0;
+        color: #6b7280;
+        text-align: center;
+        line-height: 1.45;
+        font-size: 0.95rem;
+      }
+
+      .button-row {
+        width: 100%;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        flex: 1;
+        min-width: 120px;
+        border: 0;
+        border-radius: 10px;
+        padding: 12px 14px;
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+        transition: transform 0.1s, background 0.15s;
+      }
+
+      button:active {
+        transform: scale(0.98);
+      }
+
+      .btn-primary {
+        color: #ffffff;
+        background: #6c63ff;
+        box-shadow: 0 8px 22px rgba(108, 99, 255, 0.28);
+      }
+
+      .btn-primary:hover {
+        background: #5a52e0;
+      }
+
+      .btn-secondary {
+        color: #6c63ff;
+        background: #f0efff;
+      }
+
+      .btn-secondary:hover {
+        background: #e4e2ff;
+      }
+
+      .btn-success {
+        color: #ffffff;
+        background: #38a169;
+        box-shadow: 0 8px 22px rgba(56, 161, 105, 0.2);
+      }
+
+      .btn-success:hover {
+        background: #2f855a;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="timer-shell">
+      <header class="timer-header">
+        <div class="timer-icon">⏱</div>
+        <div>
+          <h1 class="timer-title">Focus Timer</h1>
+          <p class="timer-subtitle">5 min focus, then a 1 min break</p>
+        </div>
+      </header>
+
+      <section class="timer-card">
+        <div id="phase-pill" class="phase-pill">Study</div>
+        <div id="time-display" class="time-display">5:00</div>
+        <p id="status-text" class="status-text">Click Start to begin your 5 minute focus session.</p>
+
+        <div class="button-row">
+          <button id="btn-start" class="btn-primary">Start</button>
+          <button id="btn-break" class="btn-success hidden">Study Break</button>
+          <button id="btn-reset" class="btn-secondary">Reset</button>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const STUDY_SECONDS = 5 * 60;
+      const BREAK_SECONDS = 1 * 60;
+
+      const phasePill = document.getElementById("phase-pill");
+      const timeDisplay = document.getElementById("time-display");
+      const statusText = document.getElementById("status-text");
+      const btnStart = document.getElementById("btn-start");
+      const btnBreak = document.getElementById("btn-break");
+      const btnReset = document.getElementById("btn-reset");
+
+      let phase = "ready";
+      let remainingSeconds = STUDY_SECONDS;
+      let timerId = null;
+
+      async function invokeTauri(command) {
+        if (window.__TAURI__?.core?.invoke) {
+          try {
+            await window.__TAURI__.core.invoke(command);
+          } catch (error) {
+            console.error(`Failed to run ${command}:`, error);
+          }
+        }
+      }
+
+      function formatTime(totalSeconds) {
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+      }
+
+      function render() {
+        timeDisplay.textContent = formatTime(remainingSeconds);
+        phasePill.classList.toggle("break", phase === "break" || phase === "break-ready");
+
+        if (phase === "ready") {
+          phasePill.textContent = "Study";
+          statusText.textContent = "Click Start to begin your 5 minute focus session.";
+          btnStart.classList.remove("hidden");
+          btnBreak.classList.add("hidden");
+        } else if (phase === "study") {
+          phasePill.textContent = "Studying";
+          statusText.textContent = "Focus timer is running.";
+          btnStart.classList.add("hidden");
+          btnBreak.classList.add("hidden");
+        } else if (phase === "break-ready") {
+          phasePill.textContent = "Break Ready";
+          statusText.textContent = "Study time is done. Click Study Break to start a 1 minute break.";
+          btnStart.classList.add("hidden");
+          btnBreak.classList.remove("hidden");
+        } else if (phase === "break") {
+          phasePill.textContent = "Break";
+          statusText.textContent = "Break timer is running.";
+          btnStart.classList.add("hidden");
+          btnBreak.classList.add("hidden");
+        } else if (phase === "done") {
+          phasePill.textContent = "Done";
+          statusText.textContent = "Break is done. Reset when you are ready for another session.";
+          btnStart.classList.add("hidden");
+          btnBreak.classList.add("hidden");
+        }
+      }
+
+      function startTimer(nextPhase, seconds, onDone) {
+        clearInterval(timerId);
+        phase = nextPhase;
+        remainingSeconds = seconds;
+        render();
+
+        timerId = setInterval(() => {
+          remainingSeconds -= 1;
+          render();
+
+          if (remainingSeconds <= 0) {
+            clearInterval(timerId);
+            timerId = null;
+            onDone();
+            render();
+          }
+        }, 1000);
+      }
+
+      btnStart.addEventListener("click", () => {
+        invokeTauri("resume_study_mode_after_break");
+        startTimer("study", STUDY_SECONDS, () => {
+          phase = "break-ready";
+          remainingSeconds = BREAK_SECONDS;
+          invokeTauri("resume_study_mode_after_break");
+        });
+      });
+
+      btnBreak.addEventListener("click", () => {
+        invokeTauri("pause_study_mode_for_break");
+        startTimer("break", BREAK_SECONDS, () => {
+          phase = "done";
+          remainingSeconds = 0;
+          invokeTauri("resume_study_mode_after_break");
+        });
+      });
+
+      btnReset.addEventListener("click", () => {
+        if (phase === "break") {
+          invokeTauri("resume_study_mode_after_break");
+        }
+        clearInterval(timerId);
+        timerId = null;
+        phase = "ready";
+        remainingSeconds = STUDY_SECONDS;
+        render();
+      });
+
+      render();
+    </script>
+  </body>
+</html>

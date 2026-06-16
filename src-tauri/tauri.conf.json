@@ -19,11 +19,24 @@
         "resizable": false,
         "minWidth": 680,
         "minHeight": 640
+      },
+      {
+        "label": "clock",
+        "title": "Focus Timer",
+        "url": "clock.html",
+        "width": 360,
+        "height": 430,
+        "minWidth": 300,
+        "minHeight": 340,
+        "resizable": true,
+        "alwaysOnTop": true,
+        "visible": false
       }
     ],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,

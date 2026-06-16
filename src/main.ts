@@ -829,5 +829,11 @@ loadSchedule();
 renderMainSitesList();
 startScheduleChecker();
 
-// ── Non-functional buttons ─────────────────────────────────────────────────
-document.getElementById("btn-clock")?.addEventListener("click", () => {});
+// ── Clock Button ───────────────────────────────────────────────────────────
+document.getElementById("btn-clock")?.addEventListener("click", async () => {
+  try {
+    await invoke("open_clock_window");
+  } catch (e) {
+    showError(`Could not open clock: ${e}`);
+  }
+});
