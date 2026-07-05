@@ -113,6 +113,29 @@ An installer is also created under `src-tauri\target\release\bundle\nsis\`.
 
 ---
 
+## Windows startup
+
+The app automatically registers itself to start when Windows starts. This is handled by the Tauri autostart plugin in `src-tauri/src/lib.rs`.
+
+To activate it:
+
+1. Run or open Study Mode at least once.
+2. Let the main window appear.
+3. Quit the app from the tray menu.
+4. Restart Windows.
+5. Study Mode should open automatically after you sign in.
+
+To verify it in Windows:
+
+1. Press `Ctrl + Shift + Esc`.
+2. Open `Startup apps`.
+3. Look for `Study Mode` or `study-mode-app`.
+4. Confirm it is enabled.
+
+If it does not start automatically, build and install the app from `src-tauri\target\release\bundle\nsis\`, open the installed app once, then restart Windows again.
+
+---
+
 ## How to stop the app
 
 | Situation | How to stop |

@@ -2,7 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const STUDY_PASSWORD = "12345";
+const DEFAULT_STUDY_PASSWORD = "12345";
+const PASSWORD_STORAGE_KEY = "study-mode-password";
 const SCHEDULE_STORAGE_KEY = "study-mode-schedule";
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -34,6 +35,7 @@ interface ScheduleData {
 // ── DOM References ─────────────────────────────────────────────────────────
 const startupOverlay = document.getElementById("startup-overlay")!;
 const passwordOverlay = document.getElementById("password-overlay")!;
+const changePasswordOverlay = document.getElementById("change-password-overlay")!;
 const blockedModalOverlay = document.getElementById("blocked-modal-overlay")!;
 const scheduleModalOverlay = document.getElementById("schedule-modal-overlay")!;
 const pauseScheduleOverlay = document.getElementById("pause-schedule-overlay")!;
@@ -85,6 +87,14 @@ const errorBanner = document.getElementById("error-banner")!;
 const errorBannerText = document.getElementById("error-banner-text")!;
 const btnErrorDismiss = document.getElementById("btn-error-dismiss")!;
 
+const btnChangePassword = document.getElementById("btn-change-password")!;
+const changePasswordSubtitle = document.getElementById("change-password-subtitle")!;
+const newPasswordInput = document.getElementById("new-password-input") as HTMLInputElement;
+const confirmNewPasswordInput = document.getElementById("confirm-new-password-input") as HTMLInputElement;
+const changePasswordError = document.getElementById("change-password-error")!;
+const btnChangePasswordCancel = document.getElementById("btn-change-password-cancel")!;
+const btnChangePasswordSend = document.getElementById("btn-change-password-send")!;
+
 // ── State ──────────────────────────────────────────────────────────────────
 let studyModeActive = false;
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
@@ -109,6 +119,14 @@ let blockedSites: string[] = [
   "twitter.com / x.com",
   "reddit.com / redd.it",
 ];
+
+function getStudyPassword(): string {
+  return localStorage.getItem(PASSWORD_STORAGE_KEY) || DEFAULT_STUDY_PASSWORD;
+}
+
+function setStudyPassword(password: string) {
+  localStorage.setItem(PASSWORD_STORAGE_KEY, password);
+}
 
 // ── Error Banner ───────────────────────────────────────────────────────────
 function showError(msg: string) {
@@ -570,8 +588,74 @@ function closePasswordModal() {
 
 btnPasswordCancel.addEventListener("click", closePasswordModal);
 
+function showChangePasswordError(message: string) {
+  changePasswordError.textContent = message;
+  changePasswordError.classList.remove("hidden");
+}
+
+function clearChangePasswordError() {
+  changePasswordError.textContent = "";
+  changePasswordError.classList.add("hidden");
+}
+
+function openChangePasswordModal() {
+  newPasswordInput.value = "";
+  confirmNewPasswordInput.value = "";
+  newPasswordInput.disabled = false;
+  confirmNewPasswordInput.disabled = false;
+  btnChangePasswordSend.textContent = "Change Password";
+  changePasswordSubtitle.textContent =
+    "Enter a new password. A copy will be emailed to gabrielle.dar@gmail.com.";
+  clearChangePasswordError();
+  changePasswordOverlay.classList.remove("hidden");
+  setTimeout(() => newPasswordInput.focus(), 50);
+}
+
+function closeChangePasswordModal() {
+  changePasswordOverlay.classList.add("hidden");
+  clearChangePasswordError();
+}
+
+btnChangePassword.addEventListener("click", openChangePasswordModal);
+btnChangePasswordCancel.addEventListener("click", closeChangePasswordModal);
+
+btnChangePasswordSend.addEventListener("click", async () => {
+  clearChangePasswordError();
+
+  const newPassword = newPasswordInput.value.trim();
+  const confirmPassword = confirmNewPasswordInput.value.trim();
+
+  if (newPassword.length < 4) {
+    showChangePasswordError("Password must be at least 4 characters.");
+    newPasswordInput.focus();
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    showChangePasswordError("Passwords do not match.");
+    confirmNewPasswordInput.select();
+    return;
+  }
+
+  setStudyPassword(newPassword);
+  btnChangePasswordSend.textContent = "Sending Email...";
+  btnChangePasswordSend.setAttribute("disabled", "true");
+
+  try {
+    await invoke("send_password_changed_email", { newPassword });
+    closeChangePasswordModal();
+    window.alert("Password changed successfully. An email was sent to gabrielle.dar@gmail.com.");
+  } catch (e) {
+    closeChangePasswordModal();
+    window.alert(`Password changed successfully, but the email could not be sent: ${String(e)}`);
+  } finally {
+    btnChangePasswordSend.textContent = "Change Password";
+    btnChangePasswordSend.removeAttribute("disabled");
+  }
+});
+
 btnPasswordConfirm.addEventListener("click", () => {
-  if (passwordInput.value === STUDY_PASSWORD) {
+  if (passwordInput.value === getStudyPassword()) {
     const mode = passwordMode;
     const siteToDelete = pendingDeleteSite;
     const blockToDelete = pendingDeleteBlockId;
@@ -752,7 +836,7 @@ btnPauseConfirm.addEventListener("click", () => {
   const days = Math.max(1, Math.min(365, Number(pauseDaysInput.value) || 1));
   pauseDaysInput.value = String(days);
 
-  if (pausePasswordInput.value !== STUDY_PASSWORD) {
+  if (pausePasswordInput.value !== getStudyPassword()) {
     pauseScheduleError.classList.remove("hidden");
     pausePasswordInput.classList.add("input-error");
     pausePasswordInput.value = "";

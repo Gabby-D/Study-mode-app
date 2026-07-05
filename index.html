@@ -103,6 +103,42 @@
       </div>
     </div>
 
+    <!-- ── Change Password Modal ── -->
+    <div id="change-password-overlay" class="overlay hidden">
+      <div class="modal password-modal">
+        <div class="modal-header">
+          <div class="modal-icon">🔑</div>
+          <h2 class="modal-title">Change Password</h2>
+          <p id="change-password-subtitle" class="modal-subtitle">
+            Enter a new password. A copy will be emailed to gabrielle.dar@gmail.com.
+          </p>
+        </div>
+
+        <div class="password-field">
+          <input
+            id="new-password-input"
+            type="password"
+            class="input"
+            placeholder="New password"
+            autocomplete="new-password"
+          />
+          <input
+            id="confirm-new-password-input"
+            type="password"
+            class="input"
+            placeholder="Confirm new password"
+            autocomplete="new-password"
+          />
+          <p id="change-password-error" class="error-text hidden"></p>
+        </div>
+
+        <div class="modal-actions">
+          <button id="btn-change-password-cancel" class="btn btn-ghost">Cancel</button>
+          <button id="btn-change-password-send" class="btn btn-primary">Change Password</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Weekly Schedule Modal ── -->
     <div id="schedule-modal-overlay" class="overlay hidden">
       <div class="modal schedule-modal">
@@ -232,6 +268,10 @@
         <button id="btn-blocked" class="btn btn-action">
           <span class="action-icon">🚫</span>
           Blocked
+        </button>
+        <button id="btn-change-password" class="btn btn-action">
+          <span class="action-icon">🔑</span>
+          Change Password
         </button>
       </section>
 

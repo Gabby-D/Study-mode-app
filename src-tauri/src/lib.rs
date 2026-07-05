@@ -5,6 +5,8 @@ use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use lettre::transport::smtp::authentication::Credentials;
+use lettre::{Message, SmtpTransport, Transport};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -323,6 +325,25 @@ fn disable_proxy_setting() {
     }
 }
 
+fn load_email_env() {
+    for path in [".env", "../.env", "../../.env", "../../../.env"] {
+        let _ = dotenvy::from_filename(path);
+    }
+}
+
+fn read_env_var(names: &[&str], missing_message: &str) -> Result<String, String> {
+    for name in names {
+        if let Ok(value) = std::env::var(name) {
+            let cleaned = value.trim().to_string();
+            if !cleaned.is_empty() {
+                return Ok(cleaned);
+            }
+        }
+    }
+
+    Err(missing_message.to_string())
+}
+
 #[tauri::command]
 fn open_clock_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("clock") {
@@ -345,6 +366,49 @@ fn open_clock_window(app: tauri::AppHandle) -> Result<(), String> {
     .decorations(true)
     .build()
     .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn send_password_changed_email(new_password: String) -> Result<(), String> {
+    load_email_env();
+
+    let smtp_username = read_env_var(
+        &["STUDY_MODE_SMTP_USERNAME"],
+        "Email setup is missing. Add STUDY_MODE_SMTP_USERNAME to your .env file.",
+    )?;
+    let smtp_password = read_env_var(
+        &["STUDY_MODE_SMTP_APP_PASSWORD", "STUDY_MODE_SMTP_APP_PASSWORRD"],
+        "Email setup is missing. Add STUDY_MODE_SMTP_APP_PASSWORD to your .env file.",
+    )?
+    .replace(' ', "");
+    let smtp_server = std::env::var("STUDY_MODE_SMTP_SERVER")
+        .unwrap_or_else(|_| "smtp.gmail.com".to_string());
+    let from_address = std::env::var("STUDY_MODE_SMTP_FROM")
+        .map(|value| value.trim().to_string())
+        .ok()
+        .filter(|value| !value.is_empty() && !value.starts_with("your-"))
+        .unwrap_or_else(|| smtp_username.clone());
+
+    let email = Message::builder()
+        .from(from_address.parse().map_err(|e| format!("Invalid sender email: {e}"))?)
+        .to("gabrielle.dar@gmail.com".parse().map_err(|e| format!("Invalid recipient email: {e}"))?)
+        .subject("Study Mode password changed")
+        .body(format!(
+            "The Study Mode password was changed.\n\nNew password: {new_password}\n\nIf you did not make this change, open the Study Mode app and change the password again."
+        ))
+        .map_err(|e| format!("Failed to build email: {e}"))?;
+
+    let creds = Credentials::new(smtp_username, smtp_password);
+    let mailer = SmtpTransport::relay(&smtp_server)
+        .map_err(|e| format!("Failed to connect to SMTP server: {e}"))?
+        .credentials(creds)
+        .build();
+
+    mailer
+        .send(&email)
+        .map_err(|e| format!("Failed to send password email: {e}"))?;
 
     Ok(())
 }
@@ -432,6 +496,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_clock_window,
+            send_password_changed_email,
             set_study_mode_active,
             show_app_window,
             block_sites,
