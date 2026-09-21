@@ -2,7 +2,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::os::windows::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use lettre::transport::smtp::authentication::Credentials;
@@ -25,6 +25,7 @@ const DEFAULT_BLOCKED_SITES: &[&str] = &[
     "twitter.com / x.com",
     "reddit.com / redd.it",
 ];
+const NONE_GIT_DATA_DIR: &str = r"G:\My Drive\none_git_files\Study-mode-app";
 
 struct AppState {
     study_mode_active: Mutex<bool>,
@@ -325,9 +326,37 @@ fn disable_proxy_setting() {
     }
 }
 
+fn none_git_data_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("STUDY_MODE_DATA_DIR") {
+        let path = PathBuf::from(dir.trim());
+        if !path.as_os_str().is_empty() {
+            return path;
+        }
+    }
+    PathBuf::from(NONE_GIT_DATA_DIR)
+}
+
 fn load_email_env() {
-    for path in [".env", "../.env", "../../.env", "../../../.env"] {
-        let _ = dotenvy::from_filename(path);
+    let data_dir = none_git_data_dir();
+    let mut candidates = vec![
+        data_dir.join(".env"),
+        data_dir.join(".env.txt"),
+        PathBuf::from(".env"),
+        PathBuf::from("../.env"),
+        PathBuf::from("../../.env"),
+        PathBuf::from("../../../.env"),
+    ];
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join(".env"));
+        }
+    }
+
+    for path in candidates {
+        if path.is_file() && dotenvy::from_filename(&path).is_ok() {
+            return;
+        }
     }
 }
 
@@ -376,11 +405,11 @@ fn send_password_changed_email(new_password: String) -> Result<(), String> {
 
     let smtp_username = read_env_var(
         &["STUDY_MODE_SMTP_USERNAME"],
-        "Email setup is missing. Add STUDY_MODE_SMTP_USERNAME to your .env file.",
+        "Email setup is missing. Add STUDY_MODE_SMTP_USERNAME to G:\\My Drive\\none_git_files\\Study-mode-app\\.env",
     )?;
     let smtp_password = read_env_var(
         &["STUDY_MODE_SMTP_APP_PASSWORD", "STUDY_MODE_SMTP_APP_PASSWORRD"],
-        "Email setup is missing. Add STUDY_MODE_SMTP_APP_PASSWORD to your .env file.",
+        "Email setup is missing. Add STUDY_MODE_SMTP_APP_PASSWORD to G:\\My Drive\\none_git_files\\Study-mode-app\\.env",
     )?
     .replace(' ', "");
     let smtp_server = std::env::var("STUDY_MODE_SMTP_SERVER")

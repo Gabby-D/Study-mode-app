@@ -65,9 +65,19 @@ If `npm` fails with a script execution policy error, run this once in PowerShell
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 ```
 
-### 4. Install project files (once per machine)
+### 4. Get the project files (once per machine)
 
 Open **PowerShell** or **Windows Terminal**, paste these one at a time, and press **Enter** after each:
+
+```
+cd C:\Users\gabby\Projects
+```
+
+If this computer does not already have the repo:
+
+```
+git clone https://github.com/Gabby-D/Study-mode-app.git
+```
 
 ```
 cd C:\Users\gabby\Projects\Study-mode-app
@@ -78,6 +88,33 @@ npm install
 ```
 
 The **first time** you start the app it may take **5–10 minutes** while Rust compiles. Later starts are much faster.
+
+### 5. Restore files that are not in git (new laptop)
+
+Git does not store the Gmail password or your saved Study Mode settings. Those are backed up here:
+
+```
+G:\My Drive\none_git_files\Study-mode-app
+```
+
+On a new computer:
+
+1. Install **Google Drive for desktop** and sign in so that folder appears as `G:\My Drive\none_git_files\Study-mode-app`.
+2. **Email settings (`.env`)** — leave `.env` in that Drive folder. The app reads it from there. If Drive is not letter `G:`, set a user environment variable `STUDY_MODE_DATA_DIR` to the full folder path, then restart the app.
+3. **Password and weekly schedule** — quit Study Mode if it is running, then copy:
+
+   ```
+   From:  G:\My Drive\none_git_files\Study-mode-app\com.studymode.app
+   To:    C:\Users\<your-username>\AppData\Local\com.studymode.app
+   ```
+
+   Replace `<your-username>` with the Windows account name on the new laptop.
+
+4. Right before you switch machines, recopy `C:\Users\gabby\AppData\Local\com.studymode.app` onto Drive so the snapshot is current.
+
+Do **not** copy `node_modules`, `dist`, or `src-tauri\target`. Those are rebuilt with `npm install` and `npm run tauri build`.
+
+Custom blocked websites are **not** saved. After a new install, the list starts as YouTube, Instagram, TikTok, X, and Reddit. Add extra sites again if you need them.
 
 ---
 
@@ -208,6 +245,8 @@ Associated CDN domains (e.g. `googlevideo.com` for YouTube) are blocked automati
 | Sites not blocking | Turn Study Mode off and on again; try a new tab to the blocked site |
 | Cursor says "something running in background" | Tray → **Quit**, or terminal → **Ctrl + C** |
 | Build failed / linker error | Install Visual Studio Build Tools with **Desktop development with C++** |
+| Password-change email missing setup | Confirm `.env` is in `G:\My Drive\none_git_files\Study-mode-app`. If Drive is not `G:`, set `STUDY_MODE_DATA_DIR` to that folder |
+| Password or schedule reset after a new install | Copy `G:\My Drive\none_git_files\Study-mode-app\com.studymode.app` to `%LOCALAPPDATA%\com.studymode.app` while the app is quit |
 | Proxy left on after crash | Restart the app — it cleans up leftover proxy settings on startup |
 
 ---
