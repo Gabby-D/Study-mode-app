@@ -10,7 +10,7 @@ use lettre::{Message, SmtpTransport, Transport};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, RunEvent, WindowEvent,
+    Emitter, Manager, RunEvent, UserAttentionType, WindowEvent,
 };
 use tauri_plugin_autostart::ManagerExt;
 
@@ -30,6 +30,50 @@ const NONE_GIT_DATA_DIR: &str = r"G:\My Drive\none_git_files\Study-mode-app";
 struct AppState {
     study_mode_active: Mutex<bool>,
     blocked_sites: Arc<Mutex<Vec<String>>>,
+    schedule: Mutex<ScheduleRuntime>,
+}
+
+#[derive(Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ScheduleBlock {
+    id: String,
+    day: u8,
+    start_minutes: u16,
+    end_minutes: u16,
+}
+
+struct ScheduleRuntime {
+    paused_until_ms: Option<i64>,
+    blocks: Vec<ScheduleBlock>,
+    manual_stop: bool,
+    study_from_schedule: bool,
+    /// User already chose Start, a delay, or a password dismiss for this block.
+    resolved_block_id: Option<String>,
+    /// Frontend has painted the chooser for this block, so we can stop re-emitting.
+    prompt_shown_for: Option<String>,
+    /// Keep the process and window up until they pick an option.
+    prompt_locking: bool,
+    countdown_deadline_ms: Option<i64>,
+    countdown_from_schedule: bool,
+    /// Delay already elapsed; keep waking the window until Study Mode turns on.
+    countdown_pending_activation: bool,
+}
+
+impl Default for ScheduleRuntime {
+    fn default() -> Self {
+        Self {
+            paused_until_ms: None,
+            blocks: Vec::new(),
+            manual_stop: false,
+            study_from_schedule: false,
+            resolved_block_id: None,
+            prompt_shown_for: None,
+            prompt_locking: false,
+            countdown_deadline_ms: None,
+            countdown_from_schedule: false,
+            countdown_pending_activation: false,
+        }
+    }
 }
 
 #[link(name = "wininet")]
@@ -494,6 +538,335 @@ fn resume_study_mode_after_break(state: tauri::State<'_, AppState>) -> Result<()
     enable_proxy_setting()
 }
 
+// ── Schedule Watcher ───────────────────────────────────────────────────────
+// The chooser used to live in a webview timer. On Windows that timer is
+// suspended while the window is hidden, and closing the window used to exit
+// the process, so a block could start with nobody watching the clock.
+
+fn now_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn local_day_and_minutes() -> (u8, u16) {
+    #[repr(C)]
+    struct WinSystemTime {
+        _year: u16,
+        _month: u16,
+        day_of_week: u16,
+        _day: u16,
+        hour: u16,
+        minute: u16,
+        _second: u16,
+        _milliseconds: u16,
+    }
+
+    extern "system" {
+        fn GetLocalTime(out: *mut WinSystemTime);
+    }
+
+    unsafe {
+        let mut st = std::mem::zeroed();
+        GetLocalTime(&mut st);
+        // Match the UI: 0 = Monday … 6 = Sunday.
+        let day = if st.day_of_week == 0 {
+            6
+        } else {
+            st.day_of_week as u8 - 1
+        };
+        (day, st.hour * 60 + st.minute)
+    }
+}
+
+fn active_block(blocks: &[ScheduleBlock], day: u8, minutes: u16) -> Option<&ScheduleBlock> {
+    blocks.iter().find(|block| {
+        block.day == day && minutes >= block.start_minutes && minutes < block.end_minutes
+    })
+}
+
+fn is_paused(schedule: &ScheduleRuntime, now: i64) -> bool {
+    schedule
+        .paused_until_ms
+        .is_some_and(|until| now < until)
+}
+
+fn prompt_is_locking(app: &tauri::AppHandle) -> bool {
+    app.state::<AppState>()
+        .schedule
+        .lock()
+        .map(|schedule| schedule.prompt_locking)
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn raise_hwnd(hwnd: *mut std::ffi::c_void) {
+    #[link(name = "user32")]
+    extern "system" {
+        fn SetForegroundWindow(hwnd: *mut std::ffi::c_void) -> i32;
+        fn SetWindowPos(
+            hwnd: *mut std::ffi::c_void,
+            insert_after: *mut std::ffi::c_void,
+            x: i32,
+            y: i32,
+            cx: i32,
+            cy: i32,
+            flags: u32,
+        ) -> i32;
+        fn ShowWindow(hwnd: *mut std::ffi::c_void, cmd: i32) -> i32;
+        fn BringWindowToTop(hwnd: *mut std::ffi::c_void) -> i32;
+    }
+
+    const SW_RESTORE: i32 = 9;
+    const HWND_TOPMOST: isize = -1;
+    const SWP_NOMOVE: u32 = 0x0002;
+    const SWP_NOSIZE: u32 = 0x0001;
+    const SWP_SHOWWINDOW: u32 = 0x0040;
+
+    unsafe {
+        ShowWindow(hwnd, SW_RESTORE);
+        SetWindowPos(
+            hwnd,
+            HWND_TOPMOST as *mut std::ffi::c_void,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+        );
+        BringWindowToTop(hwnd);
+        SetForegroundWindow(hwnd);
+    }
+}
+
+fn force_show_main_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window(WINDOW_LABEL) else {
+        return;
+    };
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_always_on_top(true);
+    #[cfg(windows)]
+    if let Ok(hwnd) = window.hwnd() {
+        raise_hwnd(hwnd.0);
+    }
+    let _ = window.set_focus();
+    let _ = window.request_user_attention(Some(UserAttentionType::Critical));
+}
+
+fn clear_window_topmost(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+        let _ = window.set_always_on_top(false);
+    }
+}
+
+#[tauri::command]
+fn sync_schedule(
+    state: tauri::State<'_, AppState>,
+    paused_until_ms: Option<i64>,
+    blocks: Vec<ScheduleBlock>,
+    manual_stop: bool,
+    study_from_schedule: bool,
+) {
+    let mut schedule = state.schedule.lock().unwrap();
+    schedule.paused_until_ms = paused_until_ms;
+    schedule.blocks = blocks;
+    schedule.manual_stop = manual_stop;
+    schedule.study_from_schedule = study_from_schedule;
+}
+
+#[tauri::command]
+fn claim_schedule_prompt(state: tauri::State<'_, AppState>, block_id: String) -> bool {
+    let mut schedule = state.schedule.lock().unwrap();
+    let dismissed = schedule.manual_stop
+        || schedule.resolved_block_id.as_ref() == Some(&block_id)
+        || schedule.countdown_deadline_ms.is_some()
+        || schedule.countdown_pending_activation;
+    if dismissed {
+        return false;
+    }
+
+    let study_active = *state.study_mode_active.lock().unwrap();
+    if study_active {
+        return false;
+    }
+
+    schedule.prompt_shown_for = Some(block_id);
+    schedule.prompt_locking = true;
+    true
+}
+
+#[tauri::command]
+fn resolve_schedule_prompt(app: tauri::AppHandle, state: tauri::State<'_, AppState>, block_id: String) {
+    {
+        let mut schedule = state.schedule.lock().unwrap();
+        schedule.resolved_block_id = Some(block_id);
+        schedule.prompt_locking = false;
+    }
+    clear_window_topmost(&app);
+}
+
+#[tauri::command]
+fn set_schedule_countdown(
+    state: tauri::State<'_, AppState>,
+    deadline_ms: Option<i64>,
+    from_schedule: bool,
+) {
+    let mut schedule = state.schedule.lock().unwrap();
+    schedule.countdown_deadline_ms = deadline_ms;
+    schedule.countdown_from_schedule = from_schedule;
+    if deadline_ms.is_some() {
+        schedule.countdown_pending_activation = false;
+    }
+}
+
+#[tauri::command]
+fn raise_for_schedule(app: tauri::AppHandle) {
+    force_show_main_window(&app);
+}
+
+fn end_scheduled_session(app: &tauri::AppHandle) {
+    let state = app.state::<AppState>();
+    let should_stop_blocking = {
+        let mut schedule = state.schedule.lock().unwrap();
+        let from_schedule = schedule.study_from_schedule;
+        schedule.manual_stop = false;
+        schedule.study_from_schedule = false;
+        schedule.resolved_block_id = None;
+        schedule.prompt_shown_for = None;
+        schedule.prompt_locking = false;
+        schedule.countdown_deadline_ms = None;
+        schedule.countdown_from_schedule = false;
+        schedule.countdown_pending_activation = false;
+        from_schedule
+    };
+
+    if should_stop_blocking {
+        let mut active = state.study_mode_active.lock().unwrap();
+        *active = false;
+        disable_proxy_setting();
+    }
+
+    clear_window_topmost(app);
+    let _ = app.emit("schedule-block-ended", ());
+}
+
+fn check_schedule(app: &tauri::AppHandle, last_block_id: &mut Option<String>) {
+    let state = app.state::<AppState>();
+    let now = now_ms();
+    let (day, minutes) = local_day_and_minutes();
+
+    let block_id = {
+        let schedule = state.schedule.lock().unwrap();
+        if is_paused(&schedule, now) {
+            None
+        } else {
+            active_block(&schedule.blocks, day, minutes).map(|block| block.id.clone())
+        }
+    };
+
+    if block_id.is_none() {
+        if last_block_id.is_some() {
+            end_scheduled_session(app);
+        }
+        *last_block_id = None;
+        return;
+    }
+
+    let current_id = block_id.unwrap();
+    // Only a real block change should forget the previous answer. The first
+    // tick after launch has no previous id and must keep a choice just made.
+    let entered_new_block = last_block_id
+        .as_ref()
+        .is_some_and(|previous| previous != &current_id);
+    *last_block_id = Some(current_id.clone());
+
+    if entered_new_block {
+        let mut schedule = state.schedule.lock().unwrap();
+        schedule.resolved_block_id = None;
+        schedule.prompt_shown_for = None;
+    }
+
+    let (manual_stop, already_resolved, prompt_shown, countdown_deadline, countdown_from_schedule) = {
+        let schedule = state.schedule.lock().unwrap();
+        (
+            schedule.manual_stop,
+            schedule.resolved_block_id.as_ref() == Some(&current_id),
+            schedule.prompt_shown_for.as_ref() == Some(&current_id),
+            schedule.countdown_deadline_ms,
+            schedule.countdown_from_schedule,
+        )
+    };
+
+    if let Some(deadline) = countdown_deadline {
+        if now >= deadline {
+            let mut schedule = state.schedule.lock().unwrap();
+            schedule.countdown_deadline_ms = None;
+            schedule.countdown_pending_activation = true;
+        } else {
+            return;
+        }
+    }
+
+    let study_active = *state.study_mode_active.lock().unwrap();
+    let countdown_ready = {
+        let mut schedule = state.schedule.lock().unwrap();
+        if schedule.countdown_pending_activation && study_active {
+            schedule.countdown_pending_activation = false;
+        }
+        schedule.countdown_pending_activation
+    };
+    if countdown_ready {
+        let visible = app
+            .get_webview_window(WINDOW_LABEL)
+            .and_then(|window| window.is_visible().ok())
+            .unwrap_or(false);
+        force_show_main_window(app);
+        if !visible {
+            thread::sleep(std::time::Duration::from_millis(500));
+        }
+        let _ = app.emit("schedule-countdown-done", countdown_from_schedule);
+        return;
+    }
+
+    if study_active || manual_stop || already_resolved {
+        return;
+    }
+
+    let visible = app
+        .get_webview_window(WINDOW_LABEL)
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false);
+
+    if prompt_shown && visible {
+        return;
+    }
+
+    {
+        let mut schedule = state.schedule.lock().unwrap();
+        schedule.prompt_locking = true;
+    }
+
+    force_show_main_window(app);
+    if !visible {
+        // Give WebView2 a moment to leave the suspended state before the event.
+        thread::sleep(std::time::Duration::from_millis(500));
+    }
+    let _ = app.emit("schedule-prompt", current_id);
+}
+
+fn start_schedule_watcher(app: tauri::AppHandle) {
+    thread::spawn(move || {
+        let mut last_block_id: Option<String> = None;
+        loop {
+            thread::sleep(std::time::Duration::from_secs(5));
+            check_schedule(&app, &mut last_block_id);
+        }
+    });
+}
+
 // ── Window Helpers ─────────────────────────────────────────────────────────
 
 fn show_main_window(app: &tauri::AppHandle) {
@@ -522,6 +895,7 @@ pub fn run() {
         .manage(AppState {
             study_mode_active: Mutex::new(false),
             blocked_sites,
+            schedule: Mutex::new(ScheduleRuntime::default()),
         })
         .invoke_handler(tauri::generate_handler![
             open_clock_window,
@@ -531,7 +905,12 @@ pub fn run() {
             block_sites,
             unblock_sites,
             pause_study_mode_for_break,
-            resume_study_mode_after_break
+            resume_study_mode_after_break,
+            sync_schedule,
+            claim_schedule_prompt,
+            resolve_schedule_prompt,
+            set_schedule_countdown,
+            raise_for_schedule
         ])
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .setup(|app| {
@@ -545,6 +924,8 @@ pub fn run() {
                     let _ = app.autolaunch().enable();
                 }
             }
+
+            start_schedule_watcher(app.handle().clone());
 
             let show = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
             let hide = MenuItem::with_id(app, "hide", "Hide", true, None::<&str>)?;
@@ -566,7 +947,7 @@ pub fn run() {
                     "quit" => {
                         let state = app.state::<AppState>();
                         let is_active = *state.study_mode_active.lock().unwrap();
-                        if !is_active {
+                        if !is_active && !prompt_is_locking(app) {
                             cleanup_proxy_on_startup();
                             app.exit(0);
                         }
@@ -598,12 +979,11 @@ pub fn run() {
                 let app = window.app_handle();
                 let state = app.state::<AppState>();
                 let is_active = *state.study_mode_active.lock().unwrap();
-                if is_active {
-                    api.prevent_close();
-                } else {
-                    api.prevent_close();
-                    cleanup_proxy_on_startup();
-                    app.exit(0);
+                // Closing the window must not kill the process. The schedule
+                // watcher has to keep running in the tray until the block starts.
+                api.prevent_close();
+                if !is_active && !prompt_is_locking(&app) {
+                    hide_main_window(&app);
                 }
             }
         })
@@ -614,7 +994,7 @@ pub fn run() {
                 if code.is_none() {
                     let state = app_handle.state::<AppState>();
                     let is_active = *state.study_mode_active.lock().unwrap();
-                    if is_active {
+                    if is_active || prompt_is_locking(app_handle) {
                         api.prevent_exit();
                     }
                 } else {

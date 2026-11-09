@@ -3014,6 +3014,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
+ "windows",
 ]
 
 [[package]]

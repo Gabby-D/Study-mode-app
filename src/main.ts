@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -186,6 +187,28 @@ function loadSchedule(): void {
 function saveSchedule(): void {
   const data: ScheduleData = { pausedUntil: schedulePausedUntil, blocks: scheduleBlocks };
   localStorage.setItem(SCHEDULE_STORAGE_KEY, JSON.stringify(data));
+  void syncScheduleToRust();
+}
+
+function syncScheduleToRust(): Promise<void> {
+  const pausedUntilMs = schedulePausedUntil ? new Date(schedulePausedUntil).getTime() : null;
+  return invoke("sync_schedule", {
+    pausedUntilMs,
+    blocks: scheduleBlocks,
+    manualStop: scheduleManualStop,
+    studyFromSchedule: studyModeFromSchedule,
+  }).then(
+    () => undefined,
+    (e) => {
+      console.error("Failed to sync schedule:", e);
+    }
+  );
+}
+
+function setScheduleManualStop(value: boolean) {
+  if (scheduleManualStop === value) return;
+  scheduleManualStop = value;
+  void syncScheduleToRust();
 }
 
 function isSchedulePaused(now = new Date()): boolean {
@@ -334,7 +357,7 @@ function tickSchedule() {
   const activeBlock = getActiveScheduledBlock();
 
   if (!activeBlock) {
-    scheduleManualStop = false;
+    setScheduleManualStop(false);
     activeSchedulePromptBlockId = null;
     if (studyModeActive && studyModeFromSchedule) deactivateStudyMode();
     return;
@@ -380,16 +403,16 @@ async function removeHostsBlocking() {
   }
 }
 
-async function bringAppToFront() {
+async function bringAppToFront(force = false) {
   try {
-    await invoke("show_app_window");
+    await invoke(force ? "raise_for_schedule" : "show_app_window");
   } catch (e) {
     console.error("Failed to bring app window to front:", e);
   }
 }
 
 // ── Study Mode Activation / Deactivation ──────────────────────────────────
-function activateStudyMode(fromSchedule = false) {
+async function activateStudyMode(fromSchedule = false) {
   studyModeActive = true;
   studyModeFromSchedule = fromSchedule;
   clearPendingCountdown();
@@ -401,7 +424,13 @@ function activateStudyMode(fromSchedule = false) {
   btnToggleStudy.className = "btn btn-stop btn-xl";
   websitesCard.classList.add("study-active");
 
-  notifyRust(true);
+  await notifyRust(true);
+  if (fromSchedule && activeSchedulePromptBlockId) {
+    await invoke("resolve_schedule_prompt", { blockId: activeSchedulePromptBlockId }).catch((e) => {
+      console.error("Failed to resolve schedule prompt:", e);
+    });
+  }
+  await syncScheduleToRust();
   applyHostsBlocking();
 }
 
@@ -419,16 +448,22 @@ function deactivateStudyMode() {
 
   notifyRust(false);
   removeHostsBlocking();
+  void syncScheduleToRust();
 }
 
 // ── Countdown Logic ────────────────────────────────────────────────────────
-function clearPendingCountdown() {
+function clearPendingCountdown(syncRust = true) {
   if (countdownTimer !== null) {
     clearInterval(countdownTimer);
     countdownTimer = null;
   }
   countdownBanner.classList.add("hidden");
   countdownSeconds = 0;
+  countdownFromSchedule = false;
+
+  if (syncRust) {
+    void invoke("set_schedule_countdown", { deadlineMs: null, fromSchedule: false });
+  }
 
   if (!studyModeActive) {
     statusBadge.textContent = "Off";
@@ -437,9 +472,13 @@ function clearPendingCountdown() {
 }
 
 function startCountdown(minutes: number, fromSchedule = false) {
-  clearPendingCountdown();
+  clearPendingCountdown(false);
   countdownFromSchedule = fromSchedule;
   countdownSeconds = minutes * 60;
+  void invoke("set_schedule_countdown", {
+    deadlineMs: Date.now() + minutes * 60 * 1000,
+    fromSchedule,
+  });
 
   statusBadge.textContent = "Pending";
   statusBadge.className = "status-badge status-pending";
@@ -466,23 +505,38 @@ function showMainScreen() {
   mainScreen.classList.remove("hidden");
 }
 
-function showScheduledStartupPrompt(blockId: string) {
+async function showScheduledStartupPrompt(blockId: string) {
+  let claimed = false;
+  try {
+    claimed = await invoke<boolean>("claim_schedule_prompt", { blockId });
+  } catch (e) {
+    console.error("Failed to claim schedule prompt:", e);
+    return;
+  }
+  if (!claimed) return;
+
+  scheduleManualStop = false;
   activeSchedulePromptBlockId = blockId;
   closeScheduleModal(true);
   closeBlockedModal();
-  bringAppToFront();
+  await bringAppToFront(true);
   mainScreen.classList.remove("hidden");
   startupOverlay.classList.remove("hidden");
-  notifyRust(true);
 }
 
 function dismissStartupModal(delayMinutes: number | "now" | "immediate") {
   showMainScreen();
   const fromSchedule = activeSchedulePromptBlockId !== null;
+  const blockId = activeSchedulePromptBlockId;
 
   if (delayMinutes === "now" || delayMinutes === "immediate") {
-    activateStudyMode(fromSchedule);
+    void activateStudyMode(fromSchedule);
   } else {
+    if (blockId) {
+      void invoke("resolve_schedule_prompt", { blockId }).catch((e) => {
+        console.error("Failed to resolve schedule prompt:", e);
+      });
+    }
     startCountdown(delayMinutes as number, fromSchedule);
   }
 }
@@ -654,17 +708,35 @@ btnChangePasswordSend.addEventListener("click", async () => {
   }
 });
 
-btnPasswordConfirm.addEventListener("click", () => {
-  if (passwordInput.value === getStudyPassword()) {
-    const mode = passwordMode;
-    const siteToDelete = pendingDeleteSite;
-    const blockToDelete = pendingDeleteBlockId;
-    closePasswordModal();
+async function suppressScheduledPrompt() {
+  if (!(isScheduleActive() && isInScheduledBlock())) return;
+  scheduleManualStop = true;
+  const block = getActiveScheduledBlock();
+  await syncScheduleToRust();
+  if (block) {
+    await invoke("resolve_schedule_prompt", { blockId: block.id }).catch((e) => {
+      console.error("Failed to resolve schedule prompt:", e);
+    });
+  }
+}
 
+btnPasswordConfirm.addEventListener("click", () => {
+  if (passwordInput.value !== getStudyPassword()) {
+    passwordError.classList.remove("hidden");
+    passwordInput.classList.add("input-error");
+    passwordInput.value = "";
+    passwordInput.focus();
+    return;
+  }
+
+  const mode = passwordMode;
+  const siteToDelete = pendingDeleteSite;
+  const blockToDelete = pendingDeleteBlockId;
+  closePasswordModal();
+
+  void (async () => {
     if (mode === "stop-study") {
-      if (isScheduleActive() && isInScheduledBlock()) {
-        scheduleManualStop = true;
-      }
+      await suppressScheduledPrompt();
       deactivateStudyMode();
     } else if (mode === "delete-site" && siteToDelete !== null) {
       blockedSites = blockedSites.filter((s) => s !== siteToDelete);
@@ -677,44 +749,29 @@ btnPasswordConfirm.addEventListener("click", () => {
       renderScheduleCalendar();
       tickSchedule();
     } else if (mode === "dismiss-startup-5") {
-      if (isScheduleActive() && isInScheduledBlock()) {
-        scheduleManualStop = true;
-      }
+      await suppressScheduledPrompt();
       deactivateStudyMode();
       dismissStartupModal(5);
     } else if (mode === "dismiss-startup-10") {
-      if (isScheduleActive() && isInScheduledBlock()) {
-        scheduleManualStop = true;
-      }
+      await suppressScheduledPrompt();
       deactivateStudyMode();
       dismissStartupModal(10);
     } else if (mode === "dismiss-startup-immediate") {
-      if (isScheduleActive() && isInScheduledBlock()) {
-        scheduleManualStop = true;
-      }
+      await suppressScheduledPrompt();
       deactivateStudyMode();
       showMainScreen();
-      appWindow.hide();
+      await appWindow.hide();
     } else if (mode === "dismiss-startup-schedule") {
-      if (isScheduleActive() && isInScheduledBlock()) {
-        scheduleManualStop = true;
-      }
+      await suppressScheduledPrompt();
       deactivateStudyMode();
       showMainScreen();
       openScheduleModal();
     } else if (mode === "stop-study-close") {
-      if (isScheduleActive() && isInScheduledBlock()) {
-        scheduleManualStop = true;
-      }
+      await suppressScheduledPrompt();
       deactivateStudyMode();
-      appWindow.hide();
+      await appWindow.hide();
     }
-  } else {
-    passwordError.classList.remove("hidden");
-    passwordInput.classList.add("input-error");
-    passwordInput.value = "";
-    passwordInput.focus();
-  }
+  })();
 });
 
 passwordInput.addEventListener("keydown", (e) => {
@@ -908,10 +965,49 @@ appWindow.onCloseRequested(async (event) => {
   }
 });
 
+// ── Schedule events from the Rust watcher ──────────────────────────────────
+void listen<string>("schedule-prompt", (event) => {
+  const blockId = event.payload;
+  if (studyModeActive) return;
+  if (countdownTimer !== null && activeSchedulePromptBlockId === blockId) return;
+  void showScheduledStartupPrompt(blockId);
+});
+
+void listen<boolean>("schedule-countdown-done", (event) => {
+  const fromSchedule = event.payload === true;
+  if (countdownTimer !== null) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+  countdownBanner.classList.add("hidden");
+  countdownSeconds = 0;
+  if (!fromSchedule || isInScheduledBlock()) {
+    void activateStudyMode(fromSchedule);
+  }
+  countdownFromSchedule = false;
+});
+
+void listen("schedule-block-ended", () => {
+  scheduleManualStop = false;
+  activeSchedulePromptBlockId = null;
+  if (countdownFromSchedule) {
+    clearPendingCountdown(false);
+  }
+  if (studyModeActive && studyModeFromSchedule) {
+    deactivateStudyMode();
+  } else {
+    void syncScheduleToRust();
+  }
+  if (!startupOverlay.classList.contains("hidden")) {
+    showMainScreen();
+  }
+});
+
 // ── Init ───────────────────────────────────────────────────────────────────
 loadSchedule();
 renderMainSitesList();
 startScheduleChecker();
+void syncScheduleToRust();
 
 // ── Clock Button ───────────────────────────────────────────────────────────
 document.getElementById("btn-clock")?.addEventListener("click", async () => {
